@@ -16,31 +16,30 @@
 /* For microcontrollers with low memory change that to -Os in all files,
 for default settings use -O0. -O may be a good tradeoff between both */
 #pragma GCC optimize ("-Ofast")
-/* For microcontrollers with custom LED pins, adjust the line below */
-#ifndef LED_BUILTIN
-#define LED_BUILTIN 13
-#endif
-/* For 8-bit microcontrollers we should use 16 bit variables since the
-difficulty is low, for all the other cases should be 32 bits. */
-#if defined(ARDUINO_ARCH_AVR) || defined(ARDUINO_ARCH_MEGAAVR)
-typedef uint16_t uintDiff;
-#else
-typedef uint32_t uintDiff;
-#endif
-// Arduino identifier library - https://github.com/ricaun
-#include "uniqueID.h"
+
+#include <cstdio>
 #include "sha1.h"
 
 // Create globals
 String lastblockhash = "";
 String newblockhash = "";
 String DUCOID = "";
-uintDiff difficulty = 0;
-uintDiff ducos1result = 0;
+uint16_t difficulty = 0;
+uint16_t ducos1result = 0;
 // 40+40+20+3 is the maximum size of a job
 const uint16_t job_maxsize = 104;  
 uint8_t job[job_maxsize];
 Sha1Wrapper Sha1_base;
+
+String get_DUCOID() {
+  String ID = "DUCOID";
+  char buff[4];
+  for (size_t i = 0; i < 8; i++) {
+    sprintf(buff, "%02X", (uint8_t) random(0, 9));
+    ID += buff;
+  }
+  return ID;
+}
 
 void setup() {
   // Prepare built-in led pin as output
@@ -55,8 +54,8 @@ void setup() {
 }
 
 // DUCO-S1A hasher
-uintDiff ducos1a(String lastblockhash, String newblockhash,
-                 uintDiff difficulty) {
+uint16_t ducos1a(String lastblockhash, String newblockhash,
+                 uint16_t difficulty) {
   newblockhash.toUpperCase();
   const char *c = newblockhash.c_str();
   uint8_t final_len = newblockhash.length() >> 1;
@@ -70,7 +69,7 @@ uintDiff ducos1a(String lastblockhash, String newblockhash,
   #endif
   Sha1_base.init();
   Sha1_base.print(lastblockhash);
-  for (uintDiff ducos1res = 0; ducos1res < difficulty * 100 + 1; ducos1res++) {
+  for (uint16_t ducos1res = 0; ducos1res < difficulty * 100 + 1; ducos1res++) {
     Sha1 = Sha1_base;
     Sha1.print(String(ducos1res));
     // Get SHA1 result
@@ -81,16 +80,6 @@ uintDiff ducos1a(String lastblockhash, String newblockhash,
     }
   }
   return 0;
-}
-
-String get_DUCOID() {
-  String ID = "DUCOID";
-  char buff[4];
-  for (size_t i = 0; i < 8; i++) {
-    sprintf(buff, "%02X", (uint8_t)UniqueID8[i]);
-    ID += buff;
-  }
-  return ID;
 }
 
 void loop() {
