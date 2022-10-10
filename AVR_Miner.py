@@ -36,10 +36,17 @@ from threading import Lock as thread_lock
 from threading import Semaphore
 
 import base64 as b64
+import argparse
 
 from subprocess import Popen, PIPE, STDOUT
 
 import os
+
+p = argparse.ArgumentParser(description='Fake AVR Miner for DuinoCoin')
+p.add_argument('-n', '--name', required=True, help="rig name, must be unique when running multiple rigs")
+
+args = p.parse_args()
+
 printlock = Semaphore(value=1)
 
 
@@ -171,7 +178,7 @@ def check_updates():
                     mkdir(DATA_DIR)
 
                 try:
-                    config.read(str(Settings.DATA_DIR) + '/Settings.cfg') # read the previous config
+                    config.read(str(Settings.DATA_DIR) + f'/{args.name}.cfg') # read the previous config
 
                     config["AVR Miner"] = {
                         'username':         config["AVR Miner"]['username'],
@@ -188,7 +195,7 @@ def check_updates():
                     }
 
                     with open(str(DATA_DIR) # save it on the new version folder
-                            + '/Settings.cfg', 'w') as configfile:
+                            + f'/{args.name}.cfg', 'w') as configfile:
                         config.write(configfile)
 
                     pretty_print("sys0", Style.RESET_ALL + get_string('config_saved'), "success")
@@ -287,7 +294,7 @@ def check_mining_key(user_settings):
         user_settings["mining_key"] = "None"
         config["AVR Miner"] = user_settings
 
-        with open(Settings.DATA_DIR + '/Settings.cfg',
+        with open(Settings.DATA_DIR + f'/{args.name}.cfg',
             "w") as configfile:
             config.write(configfile)
             print("sys0",
@@ -307,7 +314,7 @@ def check_mining_key(user_settings):
             user_settings["mining_key"] = b64.b64encode(mining_key.encode("utf-8")).decode('utf-8')
             config["AVR Miner"] = user_settings
 
-            with open(Settings.DATA_DIR + '/Settings.cfg',
+            with open(Settings.DATA_DIR + f'/{args.name}.cfg',
                       "w") as configfile:
                 config.write(configfile)
                 print("sys0",
@@ -327,7 +334,7 @@ def check_mining_key(user_settings):
                 user_settings["mining_key"] = b64.b64encode(mining_key.encode("utf-8")).decode('utf-8')
                 config["AVR Miner"] = user_settings
 
-                with open(Settings.DATA_DIR + '/Settings.cfg',
+                with open(Settings.DATA_DIR + f'/{args.name}.cfg',
                         "w") as configfile:
                     config.write(configfile)
                 print("sys0",
@@ -498,7 +505,7 @@ if system() == 'Darwin':
         setlocale(LC_ALL, 'en_US.UTF-8')
 
 try:
-    if not Path(Settings.DATA_DIR + '/Settings.cfg').is_file():
+    if not Path(Settings.DATA_DIR + f'/{args.name}.cfg').is_file():
         locale = getdefaultlocale()[0]
         if locale.startswith('es'):
             lang = 'spanish'
@@ -538,7 +545,7 @@ try:
             lang = 'english'
     else:
         try:
-            config.read(Settings.DATA_DIR + '/Settings.cfg')
+            config.read(Settings.DATA_DIR + f'/{args.name}.cfg')
             lang = config["AVR Miner"]['language']
         except Exception:
             lang = 'english'
@@ -629,7 +636,7 @@ def load_config():
     global discord_presence
     global SOC_TIMEOUT
 
-    if not Path(str(Settings.DATA_DIR) + '/Settings.cfg').is_file():
+    if not Path(str(Settings.DATA_DIR) + f'/{args.name}.cfg').is_file():
         print(
             Style.BRIGHT + get_string('basic_config_tool')
             + Settings.DATA_DIR
@@ -698,12 +705,6 @@ def load_config():
             rig_identifier = 'None'
 
         donation_level = '0'
-        if osname == 'nt' or osname == 'posix':
-            donation_level = input(
-                Style.RESET_ALL + Fore.YELLOW
-                + get_string('ask_donation_level')
-                + Fore.RESET + Style.BRIGHT)
-
         donation_level = sub(r'\D', '', donation_level)
         if donation_level == '':
             donation_level = 1
@@ -728,7 +729,7 @@ def load_config():
             "mining_key":       mining_key}
 
         with open(str(Settings.DATA_DIR)
-                  + '/Settings.cfg', 'w') as configfile:
+                  + f'/{args.name}.cfg', 'w') as configfile:
             config.write(configfile)
 
         avrport = avrport.split(',')
@@ -736,7 +737,7 @@ def load_config():
         hashrate_list = [0] * minerz
 
     else:
-        config.read(str(Settings.DATA_DIR) + '/Settings.cfg')
+        config.read(str(Settings.DATA_DIR) + f'/{args.name}.cfg')
         username = config["AVR Miner"]['username']
         avrport = config["AVR Miner"]['avrport']
         avrport = avrport.replace(" ", "").split(',')
@@ -821,7 +822,7 @@ def greeting():
         + Settings.BLOCK + Style.NORMAL
         + Fore.RESET + get_string("using_config")
         + Style.BRIGHT + Fore.YELLOW 
-        + str(Settings.DATA_DIR + '/Settings.cfg'))
+        + str(Settings.DATA_DIR + f'/{args.name}.cfg'))
 
     print(
         Style.DIM + Fore.MAGENTA
