@@ -37,6 +37,8 @@ from threading import Semaphore
 
 import base64 as b64
 
+from subprocess import Popen, PIPE, STDOUT
+
 import os
 printlock = Semaphore(value=1)
 
@@ -468,6 +470,7 @@ debug = 'n'
 discord_presence = 'y'
 rig_identifier = 'None'
 donation_level = 0
+minerz = 1
 hashrate = 0
 config = ConfigParser()
 mining_start_time = time()
@@ -622,6 +625,7 @@ def load_config():
     global hashrate_list
     global debug
     global rig_identifier
+    global minerz
     global discord_presence
     global SOC_TIMEOUT
 
@@ -674,32 +678,17 @@ def load_config():
         for port in portlist:
             port_names.append(port.device)
 
-        avrport = ''
-        while True:
-            current_port = input(
-                Style.RESET_ALL + Fore.YELLOW
-                + get_string('ask_avrport')
-                + Fore.RESET + Style.BRIGHT)
-
-            if current_port in port_names:
-                avrport += current_port
-                confirmation = input(
-                    Style.RESET_ALL + Fore.YELLOW
-                    + get_string('ask_anotherport')
-                    + Fore.RESET + Style.BRIGHT)
-
-                if confirmation == 'y' or confirmation == 'Y':
-                    avrport += ','
-                else:
-                    break
-            else:
-                print(Style.RESET_ALL + Fore.RED
-                      + 'Please enter a valid COM port from the list above')
-
+        avrport = '/dev/ttyUSB'
         rig_identifier = input(
             Style.RESET_ALL + Fore.YELLOW
             + get_string('ask_rig_identifier')
             + Fore.RESET + Style.BRIGHT)
+
+        minerz = int(input(
+                    Style.RESET_ALL + Fore.YELLOW
+                    + "How many Arduinos to fake? "
+                    + Fore.RESET + Style.BRIGHT))
+
         if rig_identifier == 'y' or rig_identifier == 'Y':
             rig_identifier = input(
                 Style.RESET_ALL + Fore.YELLOW
@@ -732,6 +721,7 @@ def load_config():
             'identifier':       rig_identifier,
             'debug':            'n',
             "soc_timeout":      45,
+            "minerz":           minerz,
             "avr_timeout":      10,
             "discord_presence": "y",
             "periodic_report":  60,
@@ -743,7 +733,7 @@ def load_config():
 
         avrport = avrport.split(',')
         print(Style.RESET_ALL + get_string('config_saved'))
-        hashrate_list = [0] * len(avrport)
+        hashrate_list = [0] * minerz
 
     else:
         config.read(str(Settings.DATA_DIR) + '/Settings.cfg')
@@ -752,12 +742,13 @@ def load_config():
         avrport = avrport.replace(" ", "").split(',')
         donation_level = int(config["AVR Miner"]['donate'])
         debug = config["AVR Miner"]['debug']
+        minerz = int(config["AVR Miner"]['minerz'])
         rig_identifier = config["AVR Miner"]['identifier']
         Settings.SOC_TIMEOUT = int(config["AVR Miner"]["soc_timeout"])
         Settings.AVR_TIMEOUT = float(config["AVR Miner"]["avr_timeout"])
         discord_presence = config["AVR Miner"]["discord_presence"]
         Settings.REPORT_TIME = int(config["AVR Miner"]["periodic_report"])
-        hashrate_list = [0] * len(avrport)
+        hashrate_list = [0] * minerz
 
 
 def greeting():
@@ -956,16 +947,7 @@ def mine_avr(com, threadid, fastest_pool):
     while True:
         while True:
             try:
-                ser.close()
-                pretty_print('sys' + port_num(com),
-                             f"No response from the board. Closed port {com}",
-                             'success')
-                sleep(2)
-            except:
-                pass
-            try:
-                ser = Serial(com, baudrate=int(Settings.BAUDRATE),
-                             timeout=int(Settings.AVR_TIMEOUT))
+                ser = Popen(['./Arduino_Code/Arduino_Code.out'], stdout=PIPE, stdin=PIPE, bufsize=0)
                 """
                 Sleep after opening the port to make
                 sure the board resets properly after
@@ -1012,7 +994,6 @@ def mine_avr(com, threadid, fastest_pool):
                             + server_version + Style.NORMAL
                             + Fore.RESET + get_string('update_warning'),
                             'warning')
-                        sleep(10)
 
                     Client.send(s, "MOTD")
                     motd = Client.recv(s, 1024)
@@ -1044,16 +1025,18 @@ def mine_avr(com, threadid, fastest_pool):
         while True:
             try:
                 debug_output(com + ': Sending hash test to the board')
-                ser.write(bytes(str(prev_hash
+                ser.stdin.write(str(prev_hash
                                     + Settings.SEPARATOR
                                     + exp_hash
                                     + Settings.SEPARATOR
                                     + "10"
-                                    + Settings.SEPARATOR),
-                                encoding=Settings.ENCODING))
+                                    + Settings.SEPARATOR).encode())
+
                 debug_output(com + ': Reading hash test from the board')
-                result = ser.read_until(b'\n').decode().strip().split(',')
-                ser.flush()
+
+                result = ser.stdout.readline()
+                result = result.decode().strip().split(",")
+                debug_output(str(result))
 
                 if result[0] and result[1]:
                     _ = int(result[0], 2)
@@ -1133,15 +1116,18 @@ def mine_avr(com, threadid, fastest_pool):
 
                 try:
                     debug_output(com + ': Sending job to the board')
-                    ser.write(bytes(str(job[0]
+                    ser.stdin.write(str(job[0]
                                         + Settings.SEPARATOR
                                         + job[1]
                                         + Settings.SEPARATOR
                                         + job[2]
-                                        + Settings.SEPARATOR),
-                                    encoding=Settings.ENCODING))
+                                        + Settings.SEPARATOR).encode())
                     debug_output(com + ': Reading result from the board')
-                    result = ser.read_until(b'\n').decode().strip().split(',')
+
+                    result = ser.stdout.readline()
+                    debug_output(str(result))
+                    result = result.decode().strip().split(",")
+                    debug_output(str(result))
 
                     if result[0] and result[1]:
                         _ = int(result[0], 2)
@@ -1151,7 +1137,6 @@ def mine_avr(com, threadid, fastest_pool):
                         raise Exception("No data received from AVR")
                 except Exception as e:
                     debug_output(com + f': Retrying data read: {e}')
-                    ser.flush()
                     retry_counter += 1
                     continue
 
@@ -1170,7 +1155,7 @@ def mine_avr(com, threadid, fastest_pool):
                 pretty_print('sys' + port_num(com),
                              get_string('mining_avr_connection_error')
                              + Style.NORMAL + Fore.RESET
-                             + ' (no response from the board: '
+                             + f' (no response from the board {com}: '
                              + f'{e}, please check the connection, '
                              + 'port setting or reset the AVR)', 'warning')
                 break
@@ -1290,8 +1275,6 @@ if __name__ == '__main__':
     if sys.platform == "win32":
         os.system('') # Enable VT100 Escape Sequence for WINDOWS 10 Ver. 1607
 
-    check_updates()
-
     try:
         load_config()
         debug_output('Config file loaded')
@@ -1315,17 +1298,12 @@ if __name__ == '__main__':
     except Exception as e:
         debug_output(f'Error checking miner key: {e}')
 
-    if donation_level > 0:
-        try:
-            Donate.load(donation_level)
-            Donate.start(donation_level)
-        except Exception as e:
-            debug_output(f'Error launching donation thread: {e}')
-
     try:
         fastest_pool = Client.fetch_pool()
         threadid = 0
-        for port in avrport:
+        for p in range(0, minerz):
+            port = f"/dev/ttyUSB{threadid}"
+            debug_output(f"Faking {port}")
             Thread(target=mine_avr,
                    args=(port, threadid,
                          fastest_pool)).start()
