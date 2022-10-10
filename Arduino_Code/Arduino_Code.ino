@@ -71,6 +71,10 @@ uint16_t ducos1a(String lastblockhash, String newblockhash,
   Sha1_base.print(lastblockhash);
   for (uint16_t ducos1res = 0; ducos1res < difficulty * 100 + 1; ducos1res++) {
     Sha1 = Sha1_base;
+
+    // Delay for Arduino-like hashrate, lower means more hashrate
+    delayMicroseconds(random(3650, 3700));
+
     Sha1.print(String(ducos1res));
     // Get SHA1 result
     uint8_t *hash_bytes = Sha1.result();
@@ -94,24 +98,12 @@ void loop() {
     difficulty = strtoul(Serial.readStringUntil(',').c_str(), NULL, 10);
     // Clearing the receive buffer reading one job.
     while (Serial.available()) Serial.read();
-    // Turn on the built-in led
-    #if defined(ARDUINO_ARCH_AVR)
-        PORTB = PORTB | B00100000;
-    #else
-        digitalWrite(LED_BUILTIN, LOW);
-    #endif
     // Start time measurement
     uint32_t startTime = micros();
     // Call DUCO-S1A hasher
     ducos1result = ducos1a(lastblockhash, newblockhash, difficulty);
     // Calculate elapsed time
     uint32_t elapsedTime = micros() - startTime;
-    // Turn on the built-in led
-    #if defined(ARDUINO_ARCH_AVR)
-        PORTB = PORTB & B11011111;
-    #else
-        digitalWrite(LED_BUILTIN, HIGH);
-    #endif
     // Clearing the receive buffer before sending the result.
     while (Serial.available()) Serial.read();
     // Send result back to the program with share time
