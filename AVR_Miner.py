@@ -44,6 +44,7 @@ import os
 
 p = argparse.ArgumentParser(description='Fake AVR Miner for DuinoCoin')
 p.add_argument('-n', '--name', required=True, help="rig name, must be unique when running multiple rigs")
+p.add_argument('-a', '--avr', required=False, help="path to fake AVR binary", default='./Arduino_Code/Arduino_Code.out')
 
 args = p.parse_args()
 
@@ -402,71 +403,6 @@ class Client:
                 sleep(15)
 
 
-class Donate:
-    def load(donation_level):
-        if donation_level > 0:
-            if osname == 'nt':
-                if not Path(
-                        f"{Settings.DATA_DIR}/Donate.exe").is_file():
-                    url = ('https://server.duinocoin.com/'
-                           + 'donations/DonateExecutableWindows.exe')
-                    r = requests.get(url, timeout=15)
-                    with open(f"{Settings.DATA_DIR}/Donate.exe",
-                              'wb') as f:
-                        f.write(r.content)
-            elif osname == "posix":
-                if osprocessor() == "aarch64":
-                    url = ('https://server.duinocoin.com/'
-                           + 'donations/DonateExecutableAARCH64')
-                elif osprocessor() == "armv7l":
-                    url = ('https://server.duinocoin.com/'
-                           + 'donations/DonateExecutableAARCH32')
-                else:
-                    url = ('https://server.duinocoin.com/'
-                           + 'donations/DonateExecutableLinux')
-                if not Path(
-                        f"{Settings.DATA_DIR}/Donate").is_file():
-                    r = requests.get(url, timeout=15)
-                    with open(f"{Settings.DATA_DIR}/Donate",
-                              "wb") as f:
-                        f.write(r.content)
-
-    def start(donation_level):
-        donation_settings = requests.get(
-            "https://server.duinocoin.com/donations/settings.json").json()
-
-        if os.name == 'nt':
-            cmd = (f'cd "{Settings.DATA_DIR}" & Donate.exe '
-                   + f'-o {donation_settings["url"]} '
-                   + f'-u {donation_settings["user"]} '
-                   + f'-p {donation_settings["pwd"]} '
-                   + f'-s 4 -e {donation_level*2}')
-        elif os.name == 'posix':
-            cmd = (f'cd "{Settings.DATA_DIR}" && chmod +x Donate '
-                   + '&& nice -20 ./Donate '
-                   + f'-o {donation_settings["url"]} '
-                   + f'-u {donation_settings["user"]} '
-                   + f'-p {donation_settings["pwd"]} '
-                   + f'-s 4 -e {donation_level*2}')
-
-        if donation_level <= 0:
-            pretty_print(
-                'sys0', Fore.YELLOW
-                + get_string('free_network_warning').lstrip()
-                + get_string('donate_warning').replace("\n", "\n\t\t")
-                + Fore.GREEN + 'https://duinocoin.com/donate'
-                + Fore.YELLOW + get_string('learn_more_donate'),
-                'warning')
-            sleep(5)
-
-        if donation_level > 0:
-            debug_output(get_string('starting_donation'))
-            donateExecutable = Popen(cmd, shell=True, stderr=DEVNULL)
-            pretty_print('sys0',
-                         get_string('thanks_donation').replace("\n", "\n\t\t"),
-                         'error')
-
-
 shares = [0, 0, 0]
 hashrate_mean = []
 ping_mean = []
@@ -685,7 +621,7 @@ def load_config():
         for port in portlist:
             port_names.append(port.device)
 
-        avrport = '/dev/ttyUSB'
+        avrport = 'fakeAVR'
         rig_identifier = input(
             Style.RESET_ALL + Fore.YELLOW
             + get_string('ask_rig_identifier')
@@ -704,16 +640,7 @@ def load_config():
         else:
             rig_identifier = 'None'
 
-        donation_level = '0'
-        donation_level = sub(r'\D', '', donation_level)
-        if donation_level == '':
-            donation_level = 1
-        if float(donation_level) > int(5):
-            donation_level = 5
-        if float(donation_level) < int(0):
-            donation_level = 0
-        donation_level = int(donation_level)
-
+        donation_level = 0
         config["AVR Miner"] = {
             'username':         username,
             'avrport':          avrport,
@@ -779,7 +706,7 @@ def greeting():
     print(
         Style.DIM + Fore.MAGENTA
         + Settings.BLOCK + Style.NORMAL + Fore.MAGENTA
-        + 'https://github.com/revoxhere/duino-coin')
+        + 'https://gitlab.com/dani3l0/duino-coin')
 
     if lang != "english":
         print(
@@ -948,7 +875,7 @@ def mine_avr(com, threadid, fastest_pool):
     while True:
         while True:
             try:
-                ser = Popen(['./Arduino_Code/Arduino_Code.out'], stdout=PIPE, stdin=PIPE, bufsize=0)
+                ser = Popen([args.avr], stdout=PIPE, stdin=PIPE, bufsize=0)
                 """
                 Sleep after opening the port to make
                 sure the board resets properly after
@@ -1220,7 +1147,7 @@ def mine_avr(com, threadid, fastest_pool):
                             computetime, diff, ping, feedback)
                 printlock.release()
 
-            title(get_string('duco_avr_miner') + str(Settings.VER)
+            title(get_string('duco_avr_miner')
                   + f') - {shares[0]}/{(shares[0] + shares[1])}'
                   + get_string('accepted_shares'))
 
@@ -1271,7 +1198,7 @@ def calculate_uptime(start_time):
 
 if __name__ == '__main__':
     init(autoreset=True)
-    title(f"{get_string('duco_avr_miner')}{str(Settings.VER)})")
+    title(f"{get_string('duco_avr_miner')}v{str(Settings.VER)}")
 
     if sys.platform == "win32":
         os.system('') # Enable VT100 Escape Sequence for WINDOWS 10 Ver. 1607
