@@ -38,99 +38,10 @@
 //#include <TypeConversion.h>
 #include "sha1.h"
 #include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
-#include <ArduinoOTA.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
 #include <Ticker.h>
-#include <ESP8266WebServer.h>
-
-// Uncomment the line below if you wish to use a DHT sensor (Duino IoT beta)
-// #define USE_DHT
-
-// Uncomment the line below if you wish to register for IOT updates with an MQTT broker
-// #define USE_MQTT
-
-// If you don't know what MQTT means check this link:
-// https://www.techtarget.com/iotagenda/definition/MQTT-MQ-Telemetry-Transport
-
-#ifdef USE_DHT
-float temp = 0.0;
-float hum = 0.0;
-
-// Install "DHT sensor library" if you get an error
-#include <DHT.h>
-// Change D3 to the pin you've connected your sensor to
-#define DHTPIN D3
-// Set DHT11 or DHT22 accordingly
-#define DHTTYPE DHT11
-
-DHT dht(DHTPIN, DHTTYPE);
-#endif
-
-#ifdef USE_MQTT
-// Install "PubSubClient" if you get an error
-#include <PubSubClient.h>
-
-long lastMsg = 0;
-
-// Change the part in brackets to your MQTT broker address
-#define mqtt_server "broker.hivemq.com"
-// broker.hivemq.com is for testing purposes, change it to your broker address
-
-// Change this to your MQTT broker port
-#define mqtt_port 1883
-// If you want to use user and password for your MQTT broker, uncomment the line below
-// #define mqtt_use_credentials
-
-// Change the part in brackets to your MQTT broker username
-#define mqtt_user "My cool mqtt username"
-// Change the part in brackets to your MQTT broker password
-#define mqtt_password "My secret mqtt pass"
-
-// Change this if you want to send data to the topic every X milliseconds
-#define mqtt_update_time 5000
-
-// Change the part in brackets to your MQTT humidity topic
-#define humidity_topic "sensor/humidity"
-// Change the part in brackets to your MQTT temperature topic
-#define temperature_topic "sensor/temperature"
-
-WiFiClient espClient;
-PubSubClient mqttClient(espClient);
-
-void mqttReconnect()
-{
-  // Loop until we're reconnected
-  while (!mqttClient.connected())
-  {
-    Serial.print("Attempting MQTT connection...");
-
-    // Create a random client ID
-    String clientId = "AVRClient-";
-    clientId += String(random(0xffff), HEX);
-
-    // Attempt to connect
-#ifdef mqtt_use_credentials
-    if (mqttClient.connect("AVRClient", mqtt_user, mqtt_password))
-#else
-    if (mqttClient.connect(clientId.c_str()))
-#endif
-    {
-      Serial.println("connected");
-    }
-    else
-    {
-      Serial.print("failed, rc=");
-      Serial.print(mqttClient.state());
-      Serial.println(" try again in 5 seconds");
-      // Wait 5 seconds before retrying
-      delay(5000);
-    }
-  }
-}
-#endif
 
 namespace
 {
@@ -145,12 +56,6 @@ const char *PASSWORD = "";
 // Change the part in brackets if you want to set a custom miner name (use Auto to autogenerate, None for no name)
 const char *RIG_IDENTIFIER = "None";
 // Set to true to use the 160 MHz overclock mode (and not get the first share rejected)
-const bool USE_HIGHER_DIFF = true;
-// Set to true if you want to host the dashboard page (available on ESPs IP address)
-const bool WEB_DASHBOARD = false;
-// Set to true if you want to update hashrate in browser without reloading the page
-const bool WEB_HASH_UPDATER = false;
-// Set to false if you want to disable the onboard led blinking when finding shares
 const bool LED_BLINKING = true;
 
 /* Do not change the lines below. These lines are static and dynamic variables
@@ -166,187 +71,6 @@ float hashrate = 0;
 String AutoRigName = "";
 String host = "";
 String node_id = "";
-
-const char WEBSITE[] PROGMEM = R"=====(
-<!DOCTYPE html>
-<html>
-<!--
-    Duino-Coin self-hosted dashboard
-    MIT licensed
-    Duino-Coin official 2019-2022
-    https://github.com/revoxhere/duino-coin
-    https://duinocoin.com
--->
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Duino-Coin @@DEVICE@@ dashboard</title>
-    <link rel="stylesheet" href="https://server.duinocoin.com/assets/css/mystyles.css">
-    <link rel="shortcut icon" href="https://github.com/revoxhere/duino-coin/blob/master/Resources/duco.png?raw=true">
-    <link rel="icon" type="image/png" href="https://github.com/revoxhere/duino-coin/blob/master/Resources/duco.png?raw=true">
-</head>
-<body>
-    <section class="section">
-        <div class="container">
-            <h1 class="title">
-                <img class="icon" src="https://github.com/revoxhere/duino-coin/blob/master/Resources/duco.png?raw=true">
-                @@DEVICE@@ <small>(@@ID@@)</small>
-            </h1>
-            <p class="subtitle">
-                Self-hosted, lightweight, official dashboard for your <strong>Duino-Coin</strong> miner
-            </p>
-        </div>
-        <br>
-        <div class="container">
-            <div class="columns">
-                <div class="column">
-                    <div class="box">
-                        <p class="subtitle">
-                            Mining statistics
-                        </p>
-                        <div class="columns is-multiline">
-                            <div class="column" style="min-width:15em">
-                                <div class="title is-size-5 mb-0">
-                                    <span id="hashratex">@@HASHRATE@@</span>kH/s
-                                </div>
-                                <div class="heading is-size-5">
-                                    Hashrate
-                                </div>
-                            </div>
-                            <div class="column" style="min-width:15em">
-                                <div class="title is-size-5 mb-0">
-                                    @@DIFF@@
-                                </div>
-                                <div class="heading is-size-5">
-                                    Difficulty
-                                </div>
-                            </div>
-                            <div class="column" style="min-width:15em">
-                                <div class="title is-size-5 mb-0">
-                                    @@SHARES@@
-                                </div>
-                                <div class="heading is-size-5">
-                                    Shares
-                                </div>
-                            </div>
-                            <div class="column" style="min-width:15em">
-                                <div class="title is-size-5 mb-0">
-                                    @@NODE@@
-                                </div>
-                                <div class="heading is-size-5">
-                                    Node
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="column">
-                    <div class="box">
-                        <p class="subtitle">
-                            Device information
-                        </p>
-                        <div class="columns is-multiline">
-                            <div class="column" style="min-width:15em">
-                                <div class="title is-size-5 mb-0">
-                                    @@DEVICE@@
-                                </div>
-                                <div class="heading is-size-5">
-                                    Device type
-                                </div>
-                            </div>
-                            <div class="column" style="min-width:15em">
-                                <div class="title is-size-5 mb-0">
-                                    @@ID@@
-                                </div>
-                                <div class="heading is-size-5">
-                                    Device ID
-                                </div>
-                            </div>
-                            <div class="column" style="min-width:15em">
-                                <div class="title is-size-5 mb-0">
-                                    @@MEMORY@@
-                                </div>
-                                <div class="heading is-size-5">
-                                    Free memory
-                                </div>
-                            </div>
-                            <div class="column" style="min-width:15em">
-                                <div class="title is-size-5 mb-0">
-                                    @@VERSION@@
-                                </div>
-                                <div class="heading is-size-5">
-                                    Miner version
-                                </div>
-                            </div>
-)====="
-#ifdef USE_DHT
-"                            <div class=\"column\" style=\"min-width:15em\">"
-"                                <div class=\"title is-size-5 mb-0\">"
-"                                    @@TEMP@@ °C"
-"                                </div>"
-"                                <div class=\"heading is-size-5\">"
-"                                    Temperature"
-"                                </div>"
-"                            </div>"
-"                            <div class=\"column\" style=\"min-width:15em\">"
-"                                <div class=\"title is-size-5 mb-0\">"
-"                                    @@HUM@@ %"
-"                                </div>"
-"                                <div class=\"heading is-size-5\">"
-"                                    Humidity"
-"                                </div>"
-"                            </div>"
-#endif
-  R"=====(
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <br>
-            <div class="has-text-centered">
-                <div class="title is-size-6 mb-0">
-                    Hosted on
-                    <a href="http://@@IP_ADDR@@">
-                        http://<b>@@IP_ADDR@@</b>
-                    </a>
-                    &bull;
-                    <a href="https://duinocoin.com">
-                        duinocoin.com
-                    </a>
-                    &bull;
-                    <a href="https://github.com/revoxhere/duino-coin">
-                        github.com/revoxhere/duino-coin
-                    </a>
-                </div>
-            </div>
-        </div>
-        <script>
-            setInterval(function(){
-                getData();
-            }, 3000);
-            
-            function getData() {
-                var xhttp = new XMLHttpRequest();
-                xhttp.onreadystatechange = function() {
-                    if (this.readyState == 4 && this.status == 200) {
-                        document.getElementById("hashratex").innerHTML = this.responseText;
-                    }
-                };
-                xhttp.open("GET", "hashrateread", true);
-                xhttp.send();
-            }
-        </script>
-    </section>
-</body>
-</html>
-)=====";
-
-ESP8266WebServer server(80);
-
-void hashupdater(){ //update hashrate every 3 sec in browser without reloading page
-  server.send(200, "text/plain", String(hashrate / 1000));
-  Serial.println("Update hashrate on page");
-};
 
 void UpdateHostPort(String input) {
   // Thanks @ricaun for the code
@@ -451,30 +175,6 @@ void SetupWifi() {
   UpdatePool();
 }
 
-void SetupOTA() {
-  // Prepare OTA handler
-  ArduinoOTA.onStart([]() {
-    Serial.println("Start");
-  });
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
-  });
-
-  ArduinoOTA.setHostname(RIG_IDENTIFIER); // Give port a name not just address
-  ArduinoOTA.begin();
-}
-
 void blink(uint8_t count, uint8_t pin = LED_BUILTIN) {
   if (LED_BLINKING){
     uint8_t state = HIGH;
@@ -514,7 +214,6 @@ void VerifyWifi() {
 
 void handleSystemEvents(void) {
   VerifyWifi();
-  ArduinoOTA.handle();
   yield();
 }
 
@@ -572,59 +271,12 @@ bool max_micros_elapsed(unsigned long current, unsigned long max_elapsed) {
   return false;
 }
 
-void dashboard() {
-  Serial.println("Handling HTTP client");
-
-  String s = WEBSITE;
-  s.replace("@@IP_ADDR@@", WiFi.localIP().toString());
-  
-  s.replace("@@HASHRATE@@", String(hashrate / 1000));
-  s.replace("@@DIFF@@", String(difficulty / 100));
-  s.replace("@@SHARES@@", String(share_count));
-  s.replace("@@NODE@@", String(node_id));
-
-  s.replace("@@DEVICE@@", String(DEVICE));
-  s.replace("@@ID@@", String(RIG_IDENTIFIER));
-  s.replace("@@MEMORY@@", String(ESP.getFreeHeap()));
-  s.replace("@@VERSION@@", String(MINER_VER));
-#ifdef USE_DHT
-  s.replace("@@TEMP@@", String(temp));
-  s.replace("@@HUM@@", String(hum));
-#endif
-  server.send(200, "text/html", s);
-}
-
 } // namespace
-
-// https://github.com/esp8266/Arduino/blob/master/cores/esp8266/TypeConversion.cpp
-const char base36Chars[36] PROGMEM = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'};
-const uint8_t base36CharValues[75] PROGMEM {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0, // 0 to 9
-          10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 0, 0, 0, 0, 0, 0, // Upper case letters
-          10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35  // Lower case letters
-};
-uint8_t *hexStringToUint8Array(const String &hexString, uint8_t *uint8Array, const uint32_t arrayLength) {
-    assert(hexString.length() >= arrayLength * 2); 
-    for (uint32_t i = 0; i < arrayLength; ++i) {
-        uint8Array[i] = (pgm_read_byte(base36CharValues + hexString.charAt(i * 2) - '0') << 4) + pgm_read_byte(base36CharValues + hexString.charAt(i * 2 + 1) - '0');
-    }
-    return uint8Array;
-}
 
 void setup() {
   Serial.begin(500000);
   Serial.println("\nDuino-Coin " + String(MINER_VER));
   pinMode(LED_BUILTIN, OUTPUT);
-
-  #ifdef USE_MQTT
-    mqttClient.setServer(mqtt_server, mqtt_port);
-  #endif
-  
-  #ifdef USE_DHT
-    Serial.println("Initializing DHT sensor");
-    dht.begin();
-    Serial.println("Test reading: " + String(dht.readHumidity()) + "% humidity");
-    Serial.println("Test reading: temperature " + String(dht.readTemperature()) + "*C");
-  #endif
 
   // Autogenerate ID if required
   chipID = String(ESP.getChipId(), HEX);
@@ -636,26 +288,10 @@ void setup() {
   }
 
   SetupWifi();
-  SetupOTA();
 
   lwdtFeed();
   lwdTimer.attach_ms(LWD_TIMEOUT, lwdtcb);
   START_DIFF = "AVR";
-
-  if(WEB_DASHBOARD) {
-    if (!MDNS.begin(RIG_IDENTIFIER)) {
-      Serial.println("mDNS unavailable");
-    }
-    MDNS.addService("http", "tcp", 80);
-    Serial.print("Configured mDNS for dashboard on http://" 
-                  + String(RIG_IDENTIFIER)
-                  + ".local (or http://"
-                  + WiFi.localIP().toString()
-                  + ")");
-    server.on("/", dashboard);
-    if (WEB_HASH_UPDATER) server.on("/hashrateread", hashupdater);
-    server.begin();
-  }
 
   blink(BLINK_SETUP_COMPLETE);
 }
@@ -664,6 +300,7 @@ uint16_t ducos1result = 0;
 const uint16_t job_maxsize = 104;  
 uint8_t job[job_maxsize];
 Sha1Class Sha1_base;
+
 // DUCO-S1A hasher
 uint16_t ducos1a(String lastblockhash, String newblockhash,
                  uint16_t difficulty) {
@@ -673,11 +310,8 @@ uint16_t ducos1a(String lastblockhash, String newblockhash,
   for (uint8_t i = 0, j = 0; j < final_len; i += 2, j++)
     job[j] = ((((c[i] & 0x1F) + 9) % 25) << 4) + ((c[i + 1] & 0x1F) + 9) % 25;
 
-    // Difficulty loop
-  #if defined(ARDUINO_ARCH_AVR) || defined(ARDUINO_ARCH_MEGAAVR)
-    // If the difficulty is too high for AVR architecture then return 0
-    if (difficulty > 655) return 0;
-  #endif
+  // If the difficulty is too high for AVR architecture then return 0
+  if (difficulty > 655) return 0;
   Sha1_base.init();
   Sha1_base.print(lastblockhash);
   for (uint16_t ducos1res = 0; ducos1res < difficulty * 100 + 1; ducos1res++) {
@@ -703,31 +337,9 @@ void loop() {
   // 1 minute watchdog
   lwdtFeed();
 
-  // OTA handlers
   VerifyWifi();
-  ArduinoOTA.handle();
-
   ConnectToServer();
   Serial.println("Asking for a new job for user: " + String(DUCO_USER));
-
-  #ifndef USE_DHT
-    client.print("JOB," + 
-                 String(DUCO_USER) + SEP_TOKEN +
-                 String(START_DIFF) + SEP_TOKEN +
-                 String(MINER_KEY) + END_TOKEN);
-  #endif
-
-  #ifdef USE_DHT
-    temp = dht.readTemperature();
-    hum = dht.readHumidity();
-
-    Serial.println("DHT readings: " + String(temp) + "*C, " + String(hum) + "%");
-    client.print("JOB," + 
-                 String(DUCO_USER) + SEP_TOKEN +
-                 String(START_DIFF) + SEP_TOKEN +
-                 String(MINER_KEY) + SEP_TOKEN +
-                 String(temp) + "@" + String(hum) + END_TOKEN);
-  #endif
 
   waitForClientData();
   String last_block_hash = getValue(client_buffer, SEP_TOKEN, 0);
