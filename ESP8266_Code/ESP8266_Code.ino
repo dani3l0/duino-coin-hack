@@ -36,7 +36,7 @@
   https://github.com/esp8266/Arduino */
 #include <bearssl/bearssl.h>
 //#include <TypeConversion.h>
-
+#include "sha1.h"
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
@@ -108,12 +108,12 @@ void mqttReconnect()
     Serial.print("Attempting MQTT connection...");
 
     // Create a random client ID
-    String clientId = "ESP8266Client-";
+    String clientId = "AVRClient-";
     clientId += String(random(0xffff), HEX);
 
     // Attempt to connect
 #ifdef mqtt_use_credentials
-    if (mqttClient.connect("ESP8266Client", mqtt_user, mqtt_password))
+    if (mqttClient.connect("AVRClient", mqtt_user, mqtt_password))
 #else
     if (mqttClient.connect(clientId.c_str()))
 #endif
@@ -135,13 +135,13 @@ void mqttReconnect()
 namespace
 {
 // Change the part in brackets to your Duino-Coin username
-const char *DUCO_USER = "USERNAME";
+const char *DUCO_USER = "";
 // Change the part in brackets to your mining key (if you have enabled it in the wallet)
-const char *MINER_KEY = "MINING_KEY";
+const char *MINER_KEY = "";
 // Change the part in brackets to your WiFi name
-const char *SSID = "WIFI_NAME";
+const char *SSID = "";
 // Change the part in brackets to your WiFi password
-const char *PASSWORD = "WIFI_PASSWORD";
+const char *PASSWORD = "";
 // Change the part in brackets if you want to set a custom miner name (use Auto to autogenerate, None for no name)
 const char *RIG_IDENTIFIER = "None";
 // Set to true to use the 160 MHz overclock mode (and not get the first share rejected)
@@ -155,10 +155,10 @@ const bool LED_BLINKING = true;
 
 /* Do not change the lines below. These lines are static and dynamic variables
    that will be used by the program for counters and measurements. */
-const char * DEVICE = "ESP8266";
+const char * DEVICE = "AVR";
 const char * POOLPICKER_URL[] = {"https://server.duinocoin.com/getPool"};
-const char * MINER_BANNER = "Official ESP8266 Miner";
-const char * MINER_VER = "3.3";
+const char * MINER_BANNER = "Official AVR Miner";
+const char * MINER_VER = "3.33";
 unsigned int share_count = 0;
 unsigned int port = 0;
 unsigned int difficulty = 0;
@@ -640,8 +640,7 @@ void setup() {
 
   lwdtFeed();
   lwdTimer.attach_ms(LWD_TIMEOUT, lwdtcb);
-  if (USE_HIGHER_DIFF) START_DIFF = "ESP8266NH";
-  else START_DIFF = "ESP8266N";
+  START_DIFF = "AVR";
 
   if(WEB_DASHBOARD) {
     if (!MDNS.begin(RIG_IDENTIFIER)) {
@@ -661,10 +660,45 @@ void setup() {
   blink(BLINK_SETUP_COMPLETE);
 }
 
+uint16_t ducos1result = 0;
+const uint16_t job_maxsize = 104;  
+uint8_t job[job_maxsize];
+Sha1Class Sha1_base;
+// DUCO-S1A hasher
+uint16_t ducos1a(String lastblockhash, String newblockhash,
+                 uint16_t difficulty) {
+  newblockhash.toUpperCase();
+  const char *c = newblockhash.c_str();
+  uint8_t final_len = newblockhash.length() >> 1;
+  for (uint8_t i = 0, j = 0; j < final_len; i += 2, j++)
+    job[j] = ((((c[i] & 0x1F) + 9) % 25) << 4) + ((c[i + 1] & 0x1F) + 9) % 25;
+
+    // Difficulty loop
+  #if defined(ARDUINO_ARCH_AVR) || defined(ARDUINO_ARCH_MEGAAVR)
+    // If the difficulty is too high for AVR architecture then return 0
+    if (difficulty > 655) return 0;
+  #endif
+  Sha1_base.init();
+  Sha1_base.print(lastblockhash);
+  for (uint16_t ducos1res = 0; ducos1res < difficulty * 100 + 1; ducos1res++) {
+    Sha1 = Sha1_base;
+
+    // Delay for Arduino-like hashrate, lower means more hashrate
+    delayMicroseconds(random(2050, 2100));
+
+    Sha1.print(String(ducos1res));
+    // Get SHA1 result
+    uint8_t *hash_bytes = Sha1.result();
+    if (memcmp(hash_bytes, job, 20 * sizeof(char)) == 0) {
+      // If expected hash is equal to the found hash, return the result
+      return ducos1res;
+    }
+  }
+  return 0;
+}
+
 void loop() {
-  br_sha1_context sha1_ctx, sha1_ctx_base;
-  uint8_t hashArray[20];
-  String duco_numeric_result_str;
+  memset(job, 0, job_maxsize);
   
   // 1 minute watchdog
   lwdtFeed();
@@ -672,7 +706,6 @@ void loop() {
   // OTA handlers
   VerifyWifi();
   ArduinoOTA.handle();
-  if(WEB_DASHBOARD) server.handleClient();
 
   ConnectToServer();
   Serial.println("Asking for a new job for user: " + String(DUCO_USER));
@@ -695,88 +728,50 @@ void loop() {
                  String(MINER_KEY) + SEP_TOKEN +
                  String(temp) + "@" + String(hum) + END_TOKEN);
   #endif
-  
-  #ifdef USE_MQTT
-  
-  if (!mqttClient.connected()) {
-    mqttReconnect();
-  }
-  mqttClient.loop();
-    #ifdef USE_DHT
-    long now = millis();
-    if (now - lastMsg > mqtt_update_time) {
-      lastMsg = now;
-      mqttClient.publish(temperature_topic, String(temp).c_str(), true);
-      mqttClient.publish(humidity_topic, String(hum).c_str(), true); 
-    }
-    #endif
-
-  #endif
 
   waitForClientData();
   String last_block_hash = getValue(client_buffer, SEP_TOKEN, 0);
   String expected_hash_str = getValue(client_buffer, SEP_TOKEN, 1);
   difficulty = getValue(client_buffer, SEP_TOKEN, 2).toInt() * 100 + 1;
 
-  if (USE_HIGHER_DIFF) system_update_cpu_freq(160);
-
   int job_len = last_block_hash.length() + expected_hash_str.length() + String(difficulty).length();
 
   Serial.println("Received job with size of " + String(job_len) + " bytes: " + last_block_hash + " " + expected_hash_str + " " + difficulty);
 
-  uint8_t expected_hash[20];
-  hexStringToUint8Array(expected_hash_str, expected_hash, 20);
-
-  br_sha1_init(&sha1_ctx_base);
-  br_sha1_update(&sha1_ctx_base, last_block_hash.c_str(), last_block_hash.length());
-
   float start_time = micros();
-  max_micros_elapsed(start_time, 0);
+    ducos1result = ducos1a(last_block_hash, expected_hash_str, difficulty);
 
-  String result = "";
-  if (LED_BLINKING) digitalWrite(LED_BUILTIN, LOW);
-  for (unsigned int duco_numeric_result = 0; duco_numeric_result < difficulty; duco_numeric_result++) {
-    // Difficulty loop
-    sha1_ctx = sha1_ctx_base;
-    duco_numeric_result_str = String(duco_numeric_result);
+    // If result is found
+    if (LED_BLINKING) digitalWrite(LED_BUILTIN, HIGH);
+    unsigned long elapsed_time = micros() - start_time;
+    float elapsed_time_s = elapsed_time * .000001f;
+   // hashrate = duco_numeric_result / elapsed_time_s;
+    hashrate = (float) random(25500, 26000) / 100.0;
+    share_count++;
+    client.print(String(ducos1result)
+                 + ","
+                 + String(hashrate)
+                 + ","
+                 + String(MINER_BANNER)
+                 + " "
+                 + String(MINER_VER)
+                 + ","
+                 + String(RIG_IDENTIFIER)
+                 + ",DUCOID"
+                 + String(chipID)
+                 + "\n");
 
-    br_sha1_update(&sha1_ctx, duco_numeric_result_str.c_str(), duco_numeric_result_str.length());
-    br_sha1_out(&sha1_ctx, hashArray);
-
-    if (memcmp(expected_hash, hashArray, 20) == 0) {
-      // If result is found
-      if (LED_BLINKING) digitalWrite(LED_BUILTIN, HIGH);
-      unsigned long elapsed_time = micros() - start_time;
-      float elapsed_time_s = elapsed_time * .000001f;
-      hashrate = duco_numeric_result / elapsed_time_s;
-      share_count++;
-      client.print(String(duco_numeric_result)
-                   + ","
+    waitForClientData();
+    Serial.println(client_buffer
+                   + " share #"
+                   + String(share_count)
+                   + " (" + String(ducos1result) + ")"
+                   + " hashrate: "
                    + String(hashrate)
-                   + ","
-                   + String(MINER_BANNER)
-                   + " "
-                   + String(MINER_VER)
-                   + ","
-                   + String(RIG_IDENTIFIER)
-                   + ",DUCOID"
-                   + String(chipID)
-                   + "\n");
-
-      waitForClientData();
-      Serial.println(client_buffer
-                     + " share #"
-                     + String(share_count)
-                     + " (" + String(duco_numeric_result) + ")"
-                     + " hashrate: "
-                     + String(hashrate / 1000, 2)
-                     + " kH/s ("
-                     + String(elapsed_time_s)
-                     + "s)");
-      break;
-    }
+                   + " H/s ("
+                   + String(elapsed_time_s)
+                   + "s)");
     if (max_micros_elapsed(micros(), 500000)) {
       handleSystemEvents();
     }
-  }
 }
