@@ -55,7 +55,7 @@ const char *SSID = "";
 const char *PASSWORD = "";
 // Change the part in brackets if you want to set a custom miner name (use Auto to autogenerate, None for no name)
 const char *RIG_IDENTIFIER = "None";
-// Set to true to use the 160 MHz overclock mode (and not get the first share rejected)
+// Enable LED Blinking
 const bool LED_BLINKING = true;
 
 /* Do not change the lines below. These lines are static and dynamic variables
@@ -318,7 +318,7 @@ uint16_t ducos1a(String lastblockhash, String newblockhash,
     Sha1 = Sha1_base;
 
     // Delay for Arduino-like hashrate, lower means more hashrate
-    delayMicroseconds(random(2050, 2100));
+    delayMicroseconds(3700);
 
     Sha1.print(String(ducos1res));
     // Get SHA1 result
@@ -341,6 +341,11 @@ void loop() {
   ConnectToServer();
   Serial.println("Asking for a new job for user: " + String(DUCO_USER));
 
+  client.print("JOB," + 
+                 String(DUCO_USER) + SEP_TOKEN +
+                 String(START_DIFF) + SEP_TOKEN +
+                 String(MINER_KEY) + END_TOKEN);
+
   waitForClientData();
   String last_block_hash = getValue(client_buffer, SEP_TOKEN, 0);
   String expected_hash_str = getValue(client_buffer, SEP_TOKEN, 1);
@@ -351,16 +356,16 @@ void loop() {
   Serial.println("Received job with size of " + String(job_len) + " bytes: " + last_block_hash + " " + expected_hash_str + " " + difficulty);
 
   float start_time = micros();
-    ducos1result = ducos1a(last_block_hash, expected_hash_str, difficulty);
+  ducos1result = ducos1a(last_block_hash, expected_hash_str, difficulty);
 
-    // If result is found
-    if (LED_BLINKING) digitalWrite(LED_BUILTIN, HIGH);
-    unsigned long elapsed_time = micros() - start_time;
-    float elapsed_time_s = elapsed_time * .000001f;
-   // hashrate = duco_numeric_result / elapsed_time_s;
-    hashrate = (float) random(25500, 26000) / 100.0;
-    share_count++;
-    client.print(String(ducos1result)
+  // If result is found
+  if (LED_BLINKING) digitalWrite(LED_BUILTIN, HIGH);
+  unsigned long elapsed_time = micros() - start_time;
+  float elapsed_time_s = elapsed_time * .000001f;
+  int eee = ducos1result;
+  hashrate = (eee) / elapsed_time_s;
+  share_count++;
+  client.print(String(ducos1result)
                  + ","
                  + String(hashrate)
                  + ","
@@ -373,8 +378,8 @@ void loop() {
                  + String(chipID)
                  + "\n");
 
-    waitForClientData();
-    Serial.println(client_buffer
+  waitForClientData();
+  Serial.println(client_buffer
                    + " share #"
                    + String(share_count)
                    + " (" + String(ducos1result) + ")"
@@ -383,7 +388,7 @@ void loop() {
                    + " H/s ("
                    + String(elapsed_time_s)
                    + "s)");
-    if (max_micros_elapsed(micros(), 500000)) {
-      handleSystemEvents();
-    }
+  if (max_micros_elapsed(micros(), 500000)) {
+    handleSystemEvents();
+  }
 }
