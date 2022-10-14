@@ -73,7 +73,7 @@ uint16_t ducos1a(String lastblockhash, String newblockhash,
     Sha1 = Sha1_base;
 
     // Delay for Arduino-like hashrate, lower means more hashrate
-    delayMicroseconds(random(3650, 3700));
+    delayMicroseconds(3750);
 
     Sha1.print(String(ducos1res));
     // Get SHA1 result
