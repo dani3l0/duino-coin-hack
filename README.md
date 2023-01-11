@@ -2,6 +2,78 @@
 *** Official Duino Coin README
 *** by revoxhere, 2019-2022
 -->
+`------------------ HACKED README ------------------`
+## What's this?
+
+This is a hacked version of duino-coin. This allows you to mine DUCOs on your local computer without any AVR boards.
+
+## How does it work?
+
+Hack allows you mine with AVR without having an AVR board. All is to compile AVR code to native binary (both x86s and ARMs) and make it runnable on a regular PC (or RPi). Device simulates multiple AVRs and mining speed stonks 📈 (you get more DUCOs)
+
+## Guide
+
+Firstly, we need to compile Arduino code into native, computer-readable binary. This is possible with an excellent tool called [EpoxyDuino](https://github.com/bxparks/EpoxyDuino).
+
+1. Clone [EpoxyDuino](https://github.com/bxparks/EpoxyDuino) and force to use v1.4.0 version (the one I was working with):
+```
+git clone https://github.com/bxparks/EpoxyDuino
+cd EpoxyDuino
+git checkout v1.4.0
+cd ..
+```
+
+2. Now clone this repo:
+```
+git clone https://gitlab.com/dani3l0/duino-coin
+```
+
+3. Build Arduino code into native executable binary:
+```
+cd duino-coin/Arduino_Code
+make
+```
+
+`Arduino_Code.out` should be created. It is now executable by our computer, stdin works as Serial RX and stdout works as Serial TX.
+
+4. Now, let's setup our miner.
+
+```
+cd ..
+pip install -r requirements.txt
+```
+
+5. And, finally run it **(AVR Miner, not PC one)**.
+
+```
+python3 AVR_Miner.py -a Arduino_Code/Arduino_Code.out -n my_rig_1337
+```
+
+Where:
+
+`-a Arduino_Code/Arduino_Code.out` - path to our executable Arduino binary
+
+`-n my_rig_1337` - rig identifier, must be unique
+
+Also, in config you can change number of faked Arduinos.
+
+**Have fun!**
+
+## Advices
+
+Well, those are as of 2022.
+
+- _It's not worth mining with more than 15 AVRs - due to Kolka system reward limiting_
+
+- _Do not exceed real AVR hashrate (and accepted shares), otherwise your account will be permanently banned_
+
+- <s>_Use TOR when mining on multiple accounts (Kolka applies reward limiting based on your username and IP)_</s> I didn't write this
+
+<br>
+
+`------------------ END OF README ------------------`
+
+<br><br>
 
 <a href="https://duinocoin.com">
   <img src="https://github.com/revoxhere/duino-coin/blob/master/Resources/duco.png?raw=true" width="215px" align="right" />
