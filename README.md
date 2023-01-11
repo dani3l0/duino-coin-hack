@@ -7,9 +7,13 @@
 
 This is a hacked version of duino-coin. This allows you to mine DUCOs on your local computer without any AVR boards.
 
+**Moreover, ESP8266 code is hacked as well.** It connects to specified Wi-Fi, and mines as... a regular AVR board xd
+
 ## How does it work?
 
 Hack allows you mine with AVR without having an AVR board. All is to compile AVR code to native binary (both x86s and ARMs) and make it runnable on a regular PC (or RPi). Device simulates multiple AVRs and mining speed stonks 📈 (you get more DUCOs)
+
+In ESP8266_Code I've added Arduino's SHA-1 library and ducos1a algo. Also, reduced hashrate to match the Arduino's one. So, you can leave it running at 80MHz with no problem. Just setup your Wi-Fi, account name and start mining!
 
 ## Guide
 
