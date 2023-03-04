@@ -29,7 +29,7 @@ cd ..
 
 2. Now clone this repo:
 ```
-git clone https://gitlab.com/dani3l0/duino-coin
+git clone https://github.com/dani3l0/duino-coin-hack
 ```
 
 3. Build Arduino code into native executable binary:
